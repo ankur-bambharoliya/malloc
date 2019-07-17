@@ -1,0 +1,54 @@
+Design overview: 
+
+I am createing arena struct in constructor. Arena structs are stored at the start of the heap and space for these structs is reserved using sbrk system call. However, none of the arenas are assigned any heap. 
+
+On first malloc request, if theread is not assigned to any arena, then first we asign one arena to the thread. Arenas are assigned in round robin fashion. After that if arena is is not assigned any heap then first we allocate one page heap to arena. For forthcomming requests, if there is a a free block which can fullfill the request then the block is allocated, otherwise new heap is allocated using mmap. In free call, if there are free neighbour blocks then those block are merged togather to create big free block.
+
+all the block sizes are power of 2 to limit the different page sizes and hence the fragmentation.
+
+Design decisions::
+1. I am not validating the the pointer at the begin of free call. Because checking requires traversing through the entire block list and traversing is not thread safe which slows down the free function. This tradeoff could lead to undefined behavior but that is accepted as per the malloc man.
+
+2. Memory for malloc request more that one page is not allocated from arena but direclty mmapped. This decision reduces the number of block in arena and hence reduces the  time to find free block.
+
+Allocation header
+{
+  size_t size; //size of header + data
+    short free;    // set to one if free
+    short mmapped;    // set to one if block is mmapped
+    void *next; // pointer to header of next segment
+    void *prev; // pointer to header of prev segment
+}
+
+
+Arena struct::
+typedef struct Arena
+{
+	pthread_mutex_t lock; // arena specific lock
+	MallocHeader *head;		// pointer to first block of arena
+	int total_blocks;			// total number of blocks
+	int used_blocks;			// used blocks
+	int free_blocks;			// free blocks
+	int allocation_request;	// number of malloc request to arena
+	int free_request;			// number of free request to arena
+	int arena_space;		// total space allocated to arena
+ 	int arena;     /* Non-mmapped space allocated (bytes)*/
+ 	int uordblks;  /* Total allocated space (bytes) */
+} Arena;
+
+fields handled in mallinfo::
+	arena;
+ 	ordblks;   /* Number of free chunks */
+ 	hblks;     /* Number of mmapped regions */
+ 	hblkhd;    /* Space allocated in mmapped regions (bytes) */
+ 	uordblks;  /* Total allocated space (bytes) */
+	fordblks	/*free space*/
+
+To build malloc lib:
+make libmalloc.so
+
+To test the library for multi-thread:
+make check
+
+To build source file:
+make name_of_sourcefile.o
